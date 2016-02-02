@@ -1,5 +1,5 @@
 # Clock #
-A simple python project to clock in/out through command line
+A simple command line python project to clock in/out
 
 All information will be stored in a Sqlite database name clock.db in the same folder of the script
 

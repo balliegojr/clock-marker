@@ -5,8 +5,8 @@ Usage:
   clock.py activate WORKSPACE
   clock.py mark [--time=TIME --date=DATE]
   clock.py comment COMMENT [--date=DATE --time=TIME]
-  clock.py show [-v -c --months=MONTHS --date=DATE]
-  clock.py show WORKSPACE [-v -c --months=MONTHS --date=DATE]
+  clock.py show [-v -c][--months=MONTHS|--date=DATE]
+  clock.py show WORKSPACE [-v -c][--months=MONTHS|--date=DATE]
   clock.py export [--months=MONTHS]
   clock.py migrate FILE
   clock.py check
@@ -27,6 +27,7 @@ Options:
 import datetime, os, re, calendar
 from docopt import docopt
 from itertools import groupby
+from math import ceil
 from peewee import SqliteDatabase, Model, DoesNotExist, JOIN, \
     PrimaryKeyField, DateTimeField, DateField, ForeignKeyField, TimeField, IntegerField, CharField, BooleanField
 
@@ -125,7 +126,9 @@ def comment():
     _comment.save()
 
 def show():
-    _query = WorkSpace.select().join(WorkDay, JOIN.LEFT_OUTER).join(PunchTime, JOIN.LEFT_OUTER)
+    is_verbose = args['-v']
+    show_comments = args['-c']
+    _query = WorkSpace.select(WorkSpace, WorkDay, PunchTime).join(WorkDay, JOIN.LEFT_OUTER).join(PunchTime, JOIN.LEFT_OUTER)
 
     if args['WORKSPACE']:
         wp_name = args['WORKSPACE']
@@ -133,24 +136,81 @@ def show():
     else:
         _query = _query.where(WorkSpace.is_active == True)
 
+    if args['--date']:
+        date = _getWorkDay()
+        _query = _query.where(WorkDay.date == date.date)
+
+    if args['--months']:
+        days = int(args['--months']) * 30
+        limit = datetime.date.today() - datetime.timedelta(days=days)
+        _query = _query.where(WorkDay.date >= limit)
+        
+
+    workspace_query = _query.order_by(WorkDay.date, PunchTime.time).aggregate_rows()
+    for workspace in workspace_query:
+        print('Workspace: ', workspace.name, '\n')
+
+        daily_goal = datetime.timedelta(hours=workspace.hours)
+
+        if len(workspace.workdays) == 0:
+            print('There is no workdays in the given range')
+            return;
+
+        for month, month_group in groupby(workspace.workdays, lambda x: x.date.month):
+            days_count = 0
+            month_delta = datetime.timedelta()
+
+            print(calendar.month_name[month])
+            
+            for day in month_group:
+                days_count = days_count + 1
+                if is_verbose:
+                    print('  ', day.date)
+
+                total_days = len(day.times)
+                day_delta = datetime.timedelta()
+
+                for x in range(0, total_days, 2):
+                    f_time = day.times[x].time
+                    if x+1 < total_days:
+                        s_time = day.times[x+1].time
+
+                        _delta = datetime.timedelta(hours=s_time.hour, minutes=s_time.minute, seconds=s_time.second) - \
+                            datetime.timedelta(hours=f_time.hour, minutes=f_time.minute, seconds=f_time.second)
+
+                        day_delta = day_delta + _delta
 
 
-    workspace = _query.order_by(WorkDay.date).get()
+                        if is_verbose:
+                            print('    ',f_time.strftime('%H:%M:%S'), ' - ', s_time.strftime('%H:%M:%S'), '({0})'.format(_delta))
+                    else:
+                        if is_verbose:
+                            # calculate goal
+                            print('    ',f_time.strftime('%H:%M:%S'), ' -  **:**:**')
 
-    print('Workspace: ', workspace.name, '\n')
+                month_delta = month_delta + day_delta
+                if is_verbose:
+                    print('\t', '({0}/{1})'.format(day_delta, _getDailyGoal(day_delta, daily_goal)))
+                    print('')
+                else:
+                    print('  ', day.date, '({0}/{1})'.format(day_delta, _getDailyGoal(day_delta, daily_goal)))
 
-    if len(workspace.workdays) == 0:
-        print('There is no workdays in the given range')
-        return;
+                if show_comments:
+                    if is_verbose and len(day.comments):
+                        print('   Notes')
 
-    for month, month_group in groupby(workspace.workdays, lambda x: x.date.month):
-        monthly = datetime.timedelta()
+                    for comment in day.comments:
+                        print('     ', 
+                            comment.time_spent.strftime('%H:%M') if comment.time_spent else None,
+                            comment.text
+                        )
 
-        print(calendar.month_name[month])
-        for day in month_group:
-            print('  ', day.date)
+                    if is_verbose and len(day.comments):
+                        print('')
 
-
+            print('')
+            print('{0} total:{1} ({2})'.format(calendar.month_name[month],month_delta, _getMonthGoal(workspace.hours, days_count, month_delta)))
+            print('')
 
 
 def export():
@@ -198,40 +258,19 @@ def _getTime():
     else:
         return datetime.datetime.now().time()
 
-# def total_hours(t):
-#     return (t.days * 24) + (t.seconds / 60 / 60)
+def _getDailyGoal(total, goal):
+    if total < goal:
+        return '-{0}'.format((goal - total))
 
-# def total_minutes(t):
-#     return t.seconds % (60 * 60) / 60
+    return '+{0}'.format(total - goal)
 
-# def list_tasks():
-#     clocks = list(Clock.select())
+def _getMonthGoal(hours_goal, total_days, total):
+    goal = datetime.timedelta(hours=total_days*hours_goal)
 
-#     if (len(clocks) == 0):
-#         print('Without marks')
-#         return
+    if total < goal:
+        return '-{0}'.format((goal - total))
 
-#     for month, clock_group in groupby(clocks, lambda x: x.date.month):
-
-#         monthly = datetime.timedelta()
-#         for day, daily_group in groupby(list(clock_group), lambda x: x.date):
-#             daily = datetime.timedelta()
-#             grouped = list(daily_group)
-#             for g in grouped:
-#                 daily += g.duration
-
-#             print(day, daily)
-#             if args.verbose:
-#                 for g in grouped:
-#                     print('\t {0} - {1} ({2})'.format(g.time_in.strftime('%H:%M:%S'), g.time_out.strftime('%H:%M:%S') if g.time_out is not None else ' ------ ', g.duration))
-
-#             monthly += daily
-
-#         print('')
-#         print('Month %d :' % month, '%d hours and %d minutes' % ( total_hours(monthly), total_minutes(monthly)) );
-#         print('')
-
-
+    return '+{0}'.format(total - goal)
 
 def init_args():
     global args

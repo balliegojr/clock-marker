@@ -256,8 +256,12 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
                     if verbose and len(day.comments):
                         print('')
 
+            seconds = month_delta.total_seconds()
+            hours = int(seconds / 60 / 60)
+            str_month_delta = str(hours)+ ':' + str(int((seconds/60) - (hours*60))) +':'+ str(int(seconds%60))
+
             print('')
-            print('{0} total:{1} ({2})'.format(calendar.month_name[month],month_delta, _getMonthGoal(workspace.hours, days_count, month_delta)))
+            print('{0} total:{1} ({2})'.format(calendar.month_name[month],str_month_delta, _getMonthGoal(workspace.hours, days_count, month_delta)))
             print('')
 
 

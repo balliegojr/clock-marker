@@ -3,17 +3,14 @@
 Usage:
   clock.py config WORKSPACE [--hours=HOURS --date-format=DATEFORMAT ]
   clock.py activate WORKSPACE
-  clock.py mark [--time=TIME --date=DATE]
-  clock.py mark WORKSPACE [--time=TIME --date=DATE]
+  clock.py mark [WORKSPACE] [--time=TIME --date=DATE]
   clock.py comment COMMENT [--date=DATE --time=TIME]
   clock.py comment WORKSPACE COMMENT [--date=DATE --time=TIME]
   clock.py lookup COMMENT
   clock.py lookup WORKSPACE COMMENT
-  clock.py show [-v -c][--months=MONTHS|--date=DATE]
-  clock.py show WORKSPACE [-v -c][--months=MONTHS|--date=DATE]
-  clock.py export [--months=MONTHS]
-  clock.py export WORKSPACE [--months=MONTHS]
-  clock.py migrate WORKSPACE FILE
+  clock.py show [WORKSPACE] [-v -c][--months=MONTHS|--date=DATE]
+  clock.py export [WORKSPACE] [--months=MONTHS]
+  clock.py import WORKSPACE FILE
   clock.py check
 
   clock.py (-h | --help)
@@ -25,23 +22,32 @@ Options:
   --hours=8             The amount of hours to work in a given day
   --time=HHMM           Force a given time in the entry
   --date=DDMMYYYY       Force a given date in the entry
-  --months=MONTHS       The amount of months to go backwards 
+  --months=MONTHS       The amount of months to go backwards
   -v                    Be verbose on the list
   -c                    Show comments
 """
-import datetime, os, re, calendar, inspect, csv
+import datetime
+import os
+import re
+import calendar
+import inspect
+import csv
 from docopt import docopt
 from itertools import groupby
 from math import ceil
 from peewee import SqliteDatabase, Model, DoesNotExist, JOIN, fn, OP, \
-    PrimaryKeyField, DateTimeField, DateField, ForeignKeyField, TimeField, IntegerField, CharField, BooleanField
+    PrimaryKeyField, DateTimeField, DateField, ForeignKeyField, TimeField, \
+    IntegerField, CharField, BooleanField
 
 
-from peewee import Expression # the building block for expressions
+from peewee import Expression  # the building block for expressions
 
 OP['MOD'] = 'mod'
+
+
 def mod(lhs, rhs):
     return Expression(lhs, OP.MOD, rhs)
+
 
 SqliteDatabase.register_ops({OP.MOD: '%'})
 
@@ -90,12 +96,12 @@ class Comment(Model):
 
     work_day = ForeignKeyField(WorkDay, related_name='comments')
 
-
     def __str__(self):
         return '{0} {1}'.format(
             self.time_spent.strftime('%H:%M') if self.time_spent else '--:--',
             self.text
             )
+
 
 class PunchTime(Model):
     '''
@@ -113,7 +119,7 @@ def init():
     db.create_tables([WorkSpace, WorkDay, PunchTime, Comment], safe=True)
 
 
-def config(wp_name, hours = None, date_format=None):
+def config(wp_name, hours=None, date_format=None):
     '''
         Configure the given workspace
             hours
@@ -124,10 +130,13 @@ def config(wp_name, hours = None, date_format=None):
     try:
         workspace = WorkSpace.get(WorkSpace.name == wp_name)
     except DoesNotExist:
-        is_active = WorkSpace.select().where(WorkSpace.is_active==True).count() == 0
-        workspace = WorkSpace.create(name=wp_name, is_active = is_active, date_format='%Y/%m/%d')
+        is_active = (WorkSpace
+                     .select()
+                     .where(WorkSpace.is_active)).count() == 0
+        workspace = WorkSpace.create(
+            name=wp_name, is_active=is_active, date_format='%Y/%m/%d')
         workspace.hours = 8
-    
+
     if hours:
         workspace.hours = int(hours)
 
@@ -135,7 +144,8 @@ def config(wp_name, hours = None, date_format=None):
         workspace.date_format = date_format
 
     workspace.save()
-    print('%s is now configurated to work with %d hours' % (wp_name, workspace.hours))
+    print('%s is now configurated to work with %d hours' %
+          (wp_name, workspace.hours))
 
 
 def activate(wp_name):
@@ -156,7 +166,7 @@ def activate(wp_name):
         raise Exception('There is no workspace with the given name')
 
 
-def mark(wp_name = None, time = None, date = None):
+def mark(wp_name=None, time=None, date=None):
     '''
         Mark the time in the clock
     '''
@@ -178,12 +188,15 @@ def comment(comment, wp_name=None, time=None, date=None):
 
 
 def show(verbose, show_comments, wp_name=None, date=None, months=None):
-    _query = WorkSpace.select(WorkSpace, WorkDay, PunchTime).join(WorkDay, JOIN.LEFT_OUTER).join(PunchTime, JOIN.LEFT_OUTER)
+    _query = (WorkSpace
+              .select(WorkSpace, WorkDay, PunchTime)
+              .join(WorkDay, JOIN.LEFT_OUTER)
+              .join(PunchTime, JOIN.LEFT_OUTER))
 
     if wp_name:
         _query = _query.where(WorkSpace.name == wp_name)
     else:
-        _query = _query.where(WorkSpace.is_active == True)
+        _query = _query.where(WorkSpace.is_active)
 
     if date:
         date = _getWorkDay(wp_name, date)
@@ -193,9 +206,9 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
         days = int(months) * 30
         limit = datetime.date.today() - datetime.timedelta(days=days)
         _query = _query.where(WorkDay.date >= limit)
-        
 
-    workspace_query = _query.order_by(WorkDay.date, PunchTime.time).aggregate_rows()
+    workspace_query = (_query.order_by(WorkDay.date, PunchTime.time)
+                       .aggregate_rows())
     for workspace in workspace_query:
         print('Workspace: ', workspace.name, '\n')
 
@@ -203,19 +216,21 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
 
         if len(workspace.workdays) == 0:
             print('There is no workdays in the given range')
-            return;
+            return
 
-        for month, month_group in groupby(workspace.workdays, lambda x: x.date.month):
+        for month, month_group in groupby(workspace.workdays,
+                                          lambda x: x.date.month):
             days_count = 0
             month_delta = datetime.timedelta()
 
             print(calendar.month_name[month])
-            
+
             for day in month_group:
                 days_count = days_count + 1
                 total_times = len(day.times)
-                
-                if verbose and (total_times > 0 or (show_comments and len(day.comments) > 0)):
+
+                if verbose and (total_times > 0 or
+                                (show_comments and len(day.comments) > 0)):
                     print('  ', day.date.strftime(workspace.date_format))
 
                 if total_times > 0:
@@ -231,13 +246,12 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
 
                             day_delta = day_delta + _delta
 
-
                             if verbose:
-                                print('    ',f_time.strftime('%H:%M:%S'), ' - ', s_time.strftime('%H:%M:%S'), '({0})'.format(_delta))
+                                print('    ', f_time.strftime('%H:%M:%S'), ' - ', s_time.strftime('%H:%M:%S'), '({0})'.format(_delta))
                         else:
                             if verbose:
                                 # calculate goal
-                                print('    ',f_time.strftime('%H:%M:%S'), ' -  **:**:**')
+                                print('    ', f_time.strftime('%H:%M:%S'), ' -  **:**:**')
 
                     month_delta = month_delta + day_delta
                     if verbose:
@@ -258,10 +272,10 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
 
             seconds = month_delta.total_seconds()
             hours = int(seconds / 60 / 60)
-            str_month_delta = str(hours)+ ':' + str(int((seconds/60) - (hours*60))) +':'+ str(int(seconds%60))
+            str_month_delta = str(hours) + ':' + str(int((seconds/60) - (hours*60))) + ':' + str(int(seconds % 60))
 
             print('')
-            print('{0} total:{1} ({2})'.format(calendar.month_name[month],str_month_delta, _getMonthGoal(workspace.hours, days_count, month_delta)))
+            print('{0} total:{1} ({2})'.format(calendar.month_name[month], str_month_delta, _getMonthGoal(workspace.hours, days_count, month_delta)))
             print('')
 
 
@@ -270,40 +284,39 @@ def export(wp_name, months):
     wp = _getWorkSpace(wp_name)
 
     _query = (WorkDay
-        .select(WorkDay, PunchTime, Comment)
-        .join(PunchTime, JOIN.LEFT_OUTER)
-        .switch(WorkDay)
-        .join(Comment, JOIN.LEFT_OUTER)
-        .where(WorkDay.workspace_id == wp.id))
-        
+              .select(WorkDay, PunchTime, Comment)
+              .join(PunchTime, JOIN.LEFT_OUTER)
+              .switch(WorkDay)
+              .join(Comment, JOIN.LEFT_OUTER)
+              .where(WorkDay.workspace_id == wp.id))
 
     if months:
         days = int(months) * 30
         limit = datetime.date.today() - datetime.timedelta(days=days)
         _query = _query.where(WorkDay.date >= limit)
-        
+
     workdays = _query.order_by(WorkDay.date, PunchTime.time).aggregate_rows()
 
     with open(wp.name + '_hours.csv', 'w', newline='') as csvfile:
         hourswriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-        hourswriter.writerow(['date','time'])
+        hourswriter.writerow(['date', 'time'])
         for workday in workdays:
 
             for time in workday.times:
                 hourswriter.writerow((
-                    workday.date.strftime(wp.date_format), 
+                    workday.date.strftime(wp.date_format),
                     time.time.strftime('%H:%M:%S')
                     ))
 
     with open(wp.name + '_notes.csv', 'w', newline='') as csvfile:
         commentwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-        commentwriter.writerow(['date','time_spent','note'])
+        commentwriter.writerow(['date', 'time_spent', 'note'])
 
         for workday in workdays:
             for comment in workday.comments:
                 commentwriter.writerow((
-                    workday.date.strftime(wp.date_format), 
-                    comment.time_spent.strftime('%H:%M') if comment.time_spent else '', 
+                    workday.date.strftime(wp.date_format),
+                    comment.time_spent.strftime('%H:%M') if comment.time_spent else '',
                     comment.text
                     ))
 
@@ -312,15 +325,14 @@ def check(wp_name):
     wp = _getWorkSpace(wp_name)
 
     query = (WorkDay
-         .select(WorkDay.date, fn.COUNT(PunchTime.id).alias('times_count'))
-         .join(PunchTime)
-         .where(WorkDay.workspace_id == wp.id)
-         .group_by(WorkDay.date)
-         .order_by(WorkDay.date)
-         .having(mod(fn.COUNT(PunchTime.id), 2) == 1)
-         ).aggregate_rows()
+             .select(WorkDay.date, fn.COUNT(PunchTime.id).alias('times_count'))
+             .join(PunchTime)
+             .where(WorkDay.workspace_id == wp.id)
+             .group_by(WorkDay.date)
+             .order_by(WorkDay.date)
+             .having(mod(fn.COUNT(PunchTime.id), 2) == 1)).aggregate_rows()
 
-    if  len(query) == 0:
+    if len(query) == 0:
         print('There are no missing marks')
         return
 
@@ -328,9 +340,9 @@ def check(wp_name):
 
     for workday in query:
         print(workday.date.strftime(wp.date_format))
-    
 
-def migrate(wp_name, file_name):
+
+def import_csv(wp_name, file_name):
     with open(file_name, 'r') as csvfile:
         csvreader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
         for row in csvreader:
@@ -340,10 +352,12 @@ def migrate(wp_name, file_name):
 def lookup(comment, wp_name=None):
     workspace = _getWorkSpace(wp_name)
     workdays = (WorkDay
-        .select(WorkDay, Comment)
-        .join(Comment)
-        .where((WorkDay.workspace_id == workspace.id) & (Comment.text % comment) )
-        ).aggregate_rows()
+                .select(WorkDay, Comment)
+                .join(Comment)
+                .where(
+                    (WorkDay.workspace_id == workspace.id) &
+                    (Comment.text % comment))
+                ).aggregate_rows()
 
     if len(workdays) == 0:
         print('No comments found')
@@ -352,7 +366,7 @@ def lookup(comment, wp_name=None):
         print(workday.date.strftime(wp.date_format))
         for _comment in workday.comments:
             print('     ', str(_comment))
-               
+
 
 def _getWorkSpace(wp_name=None):
     if wp_name:
@@ -362,7 +376,7 @@ def _getWorkSpace(wp_name=None):
             raise Exception('There is no workspace with the given name')
     else:
         try:
-            workspace = WorkSpace.get(WorkSpace.is_active == True)
+            workspace = WorkSpace.get(WorkSpace.is_active)
         except DoesNotExist:
             raise Exception('There is no workspace active, please activate one')
 
@@ -377,16 +391,15 @@ def _getWorkDay(wp_name=None, date=None):
     else:
         date = datetime.date.today()
 
-
     try:
         workday = WorkDay.get((WorkDay.date == date) & (WorkDay.workspace == workspace))
     except DoesNotExist:
-        workday = WorkDay.create(date = date, workspace = workspace)
+        workday = WorkDay.create(date=date, workspace=workspace)
 
     return workday
 
 
-def _getTime(time = None):
+def _getTime(time=None):
     if time:
         force_time = re.match(r'(\d{1,2}):?(\d{2})(:?(\d{2}))?', time)
 
@@ -419,7 +432,7 @@ def _getMonthGoal(hours_goal, total_days, total):
 def _init_args():
     global args
     args = docopt(__doc__, version='Clock work 1.0')
-    
+
 
 def _get_args(f):
     '''
@@ -442,19 +455,23 @@ def _get_args(f):
 
     return dict([(k, kwargs[k]) for k in arg_list if k in kwargs])
 
+
 if __name__ == '__main__':
     init()
     _init_args()
-    
+
     _locals = locals()
 
     for (arg, val) in args.items():
-        if val == True and arg in _locals:
+        if val and arg in _locals:
             to_call = arg
+
+    if not to_call and args['import']:
+        to_call = 'import_csv'
 
     kwargs = _get_args(_locals[to_call])
 
-    try:    
+    try:
         _locals[to_call](**kwargs)
     except Exception as ex:
         print(ex)

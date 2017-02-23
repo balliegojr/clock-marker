@@ -2,14 +2,18 @@
 
 Usage:
   clock.py config WORKSPACE [--hours=HOURS --date-format=DATEFORMAT ]
+  clock.py getconfig WORKSPACE
   clock.py activate WORKSPACE
-  clock.py mark [WORKSPACE] [--time=TIME --date=DATE]
+  clock.py mark [--time=TIME --date=DATE]
+  clock.py mark WORKSPACE [--time=TIME --date=DATE]
   clock.py comment COMMENT [--date=DATE --time=TIME]
   clock.py comment WORKSPACE COMMENT [--date=DATE --time=TIME]
   clock.py lookup COMMENT
   clock.py lookup WORKSPACE COMMENT
-  clock.py show [WORKSPACE] [-v -c][--months=MONTHS|--date=DATE]
-  clock.py export [WORKSPACE] [--months=MONTHS]
+  clock.py show [-v -c][--months=MONTHS|--date=DATE]
+  clock.py show WORKSPACE [-v -c][--months=MONTHS|--date=DATE]
+  clock.py export [--months=MONTHS]
+  clock.py export WORKSPACE [--months=MONTHS]
   clock.py import WORKSPACE FILE
   clock.py check
 
@@ -146,6 +150,17 @@ def config(wp_name, hours=None, date_format=None):
     workspace.save()
     print('%s is now configurated to work with %d hours' %
           (wp_name, workspace.hours))
+
+
+def getconfig(wp_name):
+    try:
+        workspace = WorkSpace.get(WorkSpace.name == wp_name)
+    except DoesNotExist:
+        raise Exception('Workspace not found')
+
+    print('hours=', workspace.hours)
+    print('date format=', workspace.date_format)
+    print('is active=', workspace.is_active)
 
 
 def activate(wp_name):

@@ -1,61 +1,151 @@
 # Clock #
-A simple command line python project to clock in/out
+A simple command line python project to track time
 
-All information will be stored in a Sqlite database name clock.db in the same folder of the script
+All information will be stored in a Sqlite database name clock-1.0.db in the same folder of the script
 
 ## Requirements ##
 [Peewee](https://github.com/coleifer/peewee)
+[Docopt](https://github.com/docopt/docopt)
+
+
+## Usage ##
+There must be at least on Workspace active to keep track
+```
+python clock.py config example-wp --hours=8 --date-format=%Y/%m/%d
+
+or just
+
+python clock.py config example-wp
+```
+
+The default values are:
+hours: 8
+date-format: %Y/%m/%d
+
+
+When a single workspace is created, it is already activated. If you have more than one workspace, it is possible to activate a specific workspace
+```
+python clock.py activate example-wp
+```
+
+The active workspace becomes the default workspace.
+
+After a workspace is created, it is possible to create time marks and notes
+```
+python clock.py mark
+python clock.py comment "this is a nice comment"
+```
 
 ## Arguments ##
-#### -h ####
+#### -h --help ####
 Display help info
 ```
-clock.py -h
+python clock.py help
 ```
 
-#### in ####
-Mark the entrance time
+#### config ####
+Configurate a workspace
 ```
-clock.py in
-```
-Use -f or --force to force an specific time
-```
-clock.py in -f 0900
-```
-#### out ####
-Mark the exit time
-```
-clock.py out
-```
-Use -f or --force to force an specific time
-```
-clock.py out -f 1200
+python clock.py config WORKSPACE [--hours=HOURS --date-format=DATEFORMAT ]
 ```
 
-#### list ####
-Summarize all clock marks
+#### getconfig ####
+Show the configuration of the given workspace
 ```
-clock.py list
-
-# output
-2016-02-01 9:40:07.321210
-2016-02-02 5:20:26.788790
-
-Month 2 : 15 hours and 0 minutes
+python clock.py getconfig WORKSPACE
 ```
-Use -v or --verbose to output daily information
+
+#### activate ####
+Activate the given workspace, only one workspace can be active at time
 ```
-clock.py list -v
+python clock.py activate WORKSPACE
+python clock.py activate example-wp
+```
 
-#output
-2016-02-01 9:40:07.321210
-         10:33:48 - 11:57:06 (1:23:17.816578)
-         12:48:37 - 19:06:44 (6:18:07.942531)
-         21:43:43 - 23:42:25 (1:58:41.562101)
-2016-02-02 5:21:29.758600
-         09:12:38 - 11:55:36 (2:42:58.243846)
-         12:40:47 -  ------  (2:38:31.514754)
+#### mark ####
+Mark the time, it is possible to force an especific time and date, also is possible to mark the time in another workspace
+```
+python clock.py mark
+python clock.py --time=10:00 --date=2010/10/10
 
-Month 2 : 15 hours and 1 minutes
+python clock.py mark ProjectX
+```
+
+#### comment ####
+Create a comment in a date, it is possible to force an especific date
+--time anotates the time of the comment
+```
+python clock.py comment "Spent the day working on project X" --date=2010/10/10
+python clock.py comment ProjectY "Spent some time in this task" --time=02:00
+```
+
+#### lookup ####
+Lookup for a given text in all the coments
+```
+python clock.py lookup "*project*"
+python clock.py lookup ProjectY "task-35*"
+```
+
+
+#### show ####
+Print marks and comments. It is possible to limit to a given date with --date or to a number of months with --months
+```
+python clock.py show
+python clock.py show ProjectX
+```
+
+Outputs:
+```
+Month
+  Date D   (total time of day / balance of hours according to the workspace configuration)
+  Date D+1 (total time of day / balance of hours according to the workspace configuration)
+
+Month total: Total time of month (balance of the month)
+```
 
 ```
+python clock.py show -vc
+```
+Outputs:
+```
+Month
+  Date D
+  	time - time (balance)
+  	time - time (balance)
+  Notes D
+  	time - text
+  	time - text
+
+  
+  Date D+1
+  	time - time (balance)
+  	time - time (balance)
+
+  Notes D+1
+  	time - text
+  	time - text
+
+Month total: Total time of month (balance of the month)
+
+```
+ 
+#### export ####
+Exports two csv files (workspace_hours.csv and workspace_notes.csv).
+
+```
+python clock.py export --months=3
+python clock.py export ProjectX
+```
+
+#### import ####
+Import the contents of a csv times file
+```
+python clock.py import ProjectX path_to_file.csv
+```
+
+#### check ####
+Check if all dates have an even number of marks
+```
+python clock.py check
+```
+  

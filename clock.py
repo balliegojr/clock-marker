@@ -192,6 +192,9 @@ def mark(wp_name=None, time=None, date=None):
 
 
 def comment(comment, wp_name=None, time=None, date=None):
+    '''
+        Insert a coment for the given day
+    '''
     _comment = Comment()
     _comment.work_day = _getWorkDay(wp_name, date)
     _comment.text = comment
@@ -203,6 +206,10 @@ def comment(comment, wp_name=None, time=None, date=None):
 
 
 def show(verbose, show_comments, wp_name=None, date=None, months=None):
+    '''
+        Show contents of the given workspace
+
+    '''
     _query = (WorkSpace
               .select(WorkSpace, WorkDay, PunchTime)
               .join(WorkDay, JOIN.LEFT_OUTER)
@@ -266,7 +273,8 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
                         else:
                             if verbose:
                                 # calculate goal
-                                print('    ', f_time.strftime('%H:%M:%S'), ' -  **:**:**')
+                                prediction = datetime.timedelta(hours=f_time.hour, minutes=f_time.minute, seconds=f_time.second) + (daily_goal - day_delta)
+                                print('    ', f_time.strftime('%H:%M:%S'), ' - ', prediction, '[P]')
 
                     month_delta = month_delta + day_delta
                     if verbose:
@@ -295,6 +303,11 @@ def show(verbose, show_comments, wp_name=None, date=None, months=None):
 
 
 def export(wp_name, months):
+    '''
+        Export workspace content to csv files
+        Marks goes to workspace_hours.csv
+        Comments goes to workspace_notes.csv
+    '''
     path = os.getcwd()
     wp = _getWorkSpace(wp_name)
 
@@ -337,6 +350,9 @@ def export(wp_name, months):
 
 
 def check(wp_name):
+    '''
+        Check the given workspace for odd marks
+    '''
     wp = _getWorkSpace(wp_name)
 
     query = (WorkDay
@@ -358,6 +374,10 @@ def check(wp_name):
 
 
 def import_csv(wp_name, file_name):
+    '''
+        Import the content from a csv file
+        Date format must be the same as defined in config
+    '''
     with open(file_name, 'r') as csvfile:
         csvreader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
         for row in csvreader:
@@ -365,6 +385,10 @@ def import_csv(wp_name, file_name):
 
 
 def lookup(comment, wp_name=None):
+    '''
+        lookup for a given comment text
+        use * as wildcard "comment*"
+    '''
     workspace = _getWorkSpace(wp_name)
     workdays = (WorkDay
                 .select(WorkDay, Comment)
@@ -476,7 +500,7 @@ if __name__ == '__main__':
     _init_args()
 
     _locals = locals()
-
+    to_call = None
     for (arg, val) in args.items():
         if val and arg in _locals:
             to_call = arg
